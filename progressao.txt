@@ -2,7 +2,7 @@ webserver           ok
 .env                ok
 middleware basic    ok
 gerar token         ok
-ler token 
+ler token           ok
 redis Docker
 
 panic recover

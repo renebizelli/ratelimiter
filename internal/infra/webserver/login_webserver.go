@@ -36,7 +36,7 @@ func (l *LoginWebServer) LoginHandler(w http.ResponseWriter, r *http.Request) {
 
 	claims := map[string]interface{}{
 		"sub": input.Email,
-		"exp": time.Now().Add(time.Second * time.Duration(l.JWTExpires)).Unix(),
+		"exp": time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
 	}
 
 	_, stringToken, jwterr := l.JWT.Encode(claims)
