@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/go-chi/jwtauth"
 	"github.com/renebizelli/ratelimiter/configs"
 	"github.com/renebizelli/ratelimiter/internal/infra/middlewares"
 	"github.com/renebizelli/ratelimiter/internal/infra/webserver"
@@ -30,9 +31,20 @@ func main() {
 	mux := http.NewServeMux()
 
 	songWebServer := webserver.NewSongWebServer()
-	loginWebserver := webserver.NewLoginWebServer(cfgs.JWTToken, cfgs.JWTExpires)
 
-	ratelimiter := middlewares.NewRateLimiter(rdb, cfgs)
+	jwt := jwtauth.New("HS256", []byte(cfgs.JWTSecret), nil)
+	loginWebserver := webserver.NewLoginWebServer(
+		jwt,
+		cfgs.JWTExpires,
+		cfgs.RATELIMITER_TOKEN_DEFAULT_MAX_REQUESTS,
+		cfgs.RATELIMITER_TOKEN_DEFAULT_SECONDS_BLOCKED)
+
+	ratelimiter := middlewares.NewRateLimiter(rdb, jwt,
+		cfgs.RATELIMITER_IP_ON,
+		cfgs.RATELIMITER_IP_MAX_REQUESTS,
+		cfgs.RATELIMITER_IP_SECONDS_BLOCKED,
+		cfgs.RATELIMITER_TOKEN_ON,
+	)
 
 	mux.HandleFunc("POST /login", loginWebserver.LoginHandler)
 	mux.Handle("GET /songs", ratelimiter.Limiter(http.HandlerFunc(songWebServer.GetSongsHandler)))

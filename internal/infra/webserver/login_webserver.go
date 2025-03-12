@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -9,18 +10,24 @@ import (
 )
 
 type LoginInput struct {
-	Email string `json:"email"`
+	Email                      string `json:"email"`
+	RatelimiterMaxRequests     int    `json:"ratelimiterMaxRequests"`
+	RaterlimiterSecondsBlocked int    `json:"raterlimiterSecondsBlocked"`
 }
 
 type LoginWebServer struct {
-	JWT        *jwtauth.JWTAuth
-	JWTExpires int64
+	JWT                               *jwtauth.JWTAuth
+	JWTExpires                        int
+	ratelimiterDefaultMaxRequests     int
+	raterlimiterDefaultSecondsBlocked int
 }
 
-func NewLoginWebServer(jwt *jwtauth.JWTAuth, expiresIn int64) *LoginWebServer {
+func NewLoginWebServer(jwt *jwtauth.JWTAuth, expiresIn int, ratelimiterDefaultMaxRequests int, raterlimiterDefaultSecondsBlocked int) *LoginWebServer {
 	return &LoginWebServer{
-		JWT:        jwt,
-		JWTExpires: expiresIn,
+		JWT:                               jwt,
+		JWTExpires:                        expiresIn,
+		ratelimiterDefaultMaxRequests:     ratelimiterDefaultMaxRequests,
+		raterlimiterDefaultSecondsBlocked: raterlimiterDefaultSecondsBlocked,
 	}
 }
 
@@ -34,10 +41,22 @@ func (l *LoginWebServer) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims := map[string]interface{}{
-		"sub": input.Email,
-		"exp": time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
+	if input.RatelimiterMaxRequests == 0 {
+		input.RatelimiterMaxRequests = l.ratelimiterDefaultMaxRequests
 	}
+
+	if input.RaterlimiterSecondsBlocked == 0 {
+		input.RaterlimiterSecondsBlocked = l.raterlimiterDefaultSecondsBlocked
+	}
+
+	claims := map[string]interface{}{
+		"user":               input.Email,
+		"rl-max-requests":    input.RatelimiterMaxRequests,
+		"rl-seconds-blocked": input.RaterlimiterSecondsBlocked,
+		"exp":                time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
+	}
+
+	log.Println(claims)
 
 	_, stringToken, jwterr := l.JWT.Encode(claims)
 

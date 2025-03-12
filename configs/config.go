@@ -1,16 +1,20 @@
 package configs
 
 import (
-	"github.com/go-chi/jwtauth"
 	pkg_utils "github.com/renebizelli/ratelimiter/pkg/utils"
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	WebServerPort string
-	JWTToken      *jwtauth.JWTAuth
-	JWTSecret     string
-	JWTExpires    int64
+	WebServerPort                             string
+	JWTSecret                                 string
+	JWTExpires                                int
+	RATELIMITER_IP_ON                         bool
+	RATELIMITER_IP_MAX_REQUESTS               int
+	RATELIMITER_IP_SECONDS_BLOCKED            int
+	RATELIMITER_TOKEN_ON                      bool
+	RATELIMITER_TOKEN_DEFAULT_MAX_REQUESTS    int
+	RATELIMITER_TOKEN_DEFAULT_SECONDS_BLOCKED int
 }
 
 func LoadConfig(path string) *Config {
@@ -27,8 +31,6 @@ func LoadConfig(path string) *Config {
 
 	err = viper.Unmarshal(&cfg)
 	pkg_utils.PanicIfError(err, "Unmarshal error")
-
-	cfg.JWTToken = jwtauth.New("HS256", []byte(cfg.JWTSecret), nil)
 
 	return cfg
 }
