@@ -10,28 +10,31 @@ import (
 )
 
 type LoginInput struct {
-	Email                      string `json:"email"`
-	RatelimiterMaxRequests     int    `json:"ratelimiterMaxRequests"`
-	RaterlimiterSecondsBlocked int    `json:"raterlimiterSecondsBlocked"`
+	Email          string `json:"email"`
+	MaxRequests    int    `json:"maxRequests"`
+	BlockedSeconds int    `json:"blockedSeconds"`
 }
 
 type LoginWebServer struct {
-	JWT                               *jwtauth.JWTAuth
-	JWTExpires                        int
-	ratelimiterDefaultMaxRequests     int
-	raterlimiterDefaultSecondsBlocked int
+	mux        *http.ServeMux
+	JWT        *jwtauth.JWTAuth
+	JWTExpires int
 }
 
-func NewLoginWebServer(jwt *jwtauth.JWTAuth, expiresIn int, ratelimiterDefaultMaxRequests int, raterlimiterDefaultSecondsBlocked int) *LoginWebServer {
+func NewLoginWebServer(mux *http.ServeMux, jwt *jwtauth.JWTAuth, expiresIn int) *LoginWebServer {
+
 	return &LoginWebServer{
-		JWT:                               jwt,
-		JWTExpires:                        expiresIn,
-		ratelimiterDefaultMaxRequests:     ratelimiterDefaultMaxRequests,
-		raterlimiterDefaultSecondsBlocked: raterlimiterDefaultSecondsBlocked,
+		mux:        mux,
+		JWT:        jwt,
+		JWTExpires: expiresIn,
 	}
 }
 
-func (l *LoginWebServer) LoginHandler(w http.ResponseWriter, r *http.Request) {
+func (l *LoginWebServer) RegisterRoutes() {
+	l.mux.HandleFunc("POST /login", l.loginHandler)
+}
+
+func (l *LoginWebServer) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 	var input LoginInput
 
@@ -41,18 +44,10 @@ func (l *LoginWebServer) LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.RatelimiterMaxRequests == 0 {
-		input.RatelimiterMaxRequests = l.ratelimiterDefaultMaxRequests
-	}
-
-	if input.RaterlimiterSecondsBlocked == 0 {
-		input.RaterlimiterSecondsBlocked = l.raterlimiterDefaultSecondsBlocked
-	}
-
 	claims := map[string]interface{}{
 		"user":               input.Email,
-		"rl-max-requests":    input.RatelimiterMaxRequests,
-		"rl-seconds-blocked": input.RaterlimiterSecondsBlocked,
+		"rl-max-requests":    input.MaxRequests,
+		"rl-seconds-blocked": input.BlockedSeconds,
 		"exp":                time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
 	}
 

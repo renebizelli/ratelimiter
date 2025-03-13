@@ -11,10 +11,10 @@ type Config struct {
 	JWTExpires                                int
 	RATELIMITER_IP_ON                         bool
 	RATELIMITER_IP_MAX_REQUESTS               int
-	RATELIMITER_IP_SECONDS_BLOCKED            int
+	RATELIMITER_IP_BLOCKED_SECONDS            int
 	RATELIMITER_TOKEN_ON                      bool
 	RATELIMITER_TOKEN_DEFAULT_MAX_REQUESTS    int
-	RATELIMITER_TOKEN_DEFAULT_SECONDS_BLOCKED int
+	RATELIMITER_TOKEN_DEFAULT_BLOCKED_SECONDS int
 }
 
 func LoadConfig(path string) *Config {
