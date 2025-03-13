@@ -29,18 +29,17 @@ func main() {
 	songWebServer := webserver.NewSongWebServer(mux, ratelimiter)
 	loginWebserver := webserver.NewLoginWebServer(mux, jwt, cfgs.JWTExpires)
 
-	webservers := []webserver.RegisterRoutesInterface{
-		songWebServer,
-		loginWebserver,
-	}
-
-	for _, ws := range webservers {
-		ws.RegisterRoutes()
-	}
+	registerRoutes(songWebServer, loginWebserver)
 
 	fmt.Printf("Web server running on port %s\n", cfgs.WebServerPort)
 
 	http.ListenAndServe(fmt.Sprintf(":%s", cfgs.WebServerPort), mux)
+}
+
+func registerRoutes(webservers ...webserver.RegisterRoutesInterface) {
+	for _, ws := range webservers {
+		ws.RegisterRoutes()
+	}
 }
 
 func createRedis(ctx context.Context) *redis.Client {
