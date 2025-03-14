@@ -19,7 +19,7 @@ func NewBasedOnIP(maxRequests, blockedSeconds int) *BasedOnIP {
 	}
 }
 
-func (l *BasedOnIP) Validate() error {
+func (l *BasedOnIP) validate() error {
 
 	if l.parameters.MaxRequests == 0 {
 		return errors.New("RATELIMITER_IP_MAX_REQUESTS is required")
@@ -30,7 +30,11 @@ func (l *BasedOnIP) Validate() error {
 	return nil
 }
 
-func (l *BasedOnIP) Parse(r *http.Request) (Key, *Parameters) {
+func (l *BasedOnIP) Parse(r *http.Request) (Key, *Parameters, error) {
+
+	if e := l.validate(); e != nil {
+		return "", nil, e
+	}
 
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 	key := Key(ip)
@@ -38,6 +42,6 @@ func (l *BasedOnIP) Parse(r *http.Request) (Key, *Parameters) {
 	return key, &Parameters{
 		MaxRequests:    l.parameters.MaxRequests,
 		BlockedSeconds: l.parameters.BlockedSeconds,
-	}
+	}, nil
 
 }

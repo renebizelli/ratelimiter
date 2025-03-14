@@ -34,43 +34,37 @@ var message409 = "you have reached the maximum number of requests or actions all
 func (l *RateLimiterMiddleware) Limiter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		var key Key
-		var parameters *Parameters
+		if l.tokenOn || l.ipOn {
 
-		if l.tokenOn {
-			err := l.basedOnToken.Validate(r)
-			if err != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"message" : "` + err.Error() + `"}`))
-				return
+			var key Key
+			var parameters *Parameters
+			var e error
+
+			if l.tokenOn {
+				key, parameters, e = l.basedOnToken.Parse(r)
+			} else if l.ipOn {
+				key, parameters, e = l.basedOnIP.Parse(r)
 			}
 
-			key, parameters = l.basedOnToken.Parse(r)
-
-		} else if l.ipOn {
-			err := l.basedOnIP.Validate()
-			if err != nil {
+			if e != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`{"message" : "` + err.Error() + `"}`))
+				w.Write([]byte(`{"message" : "` + e.Error() + `"}`))
 				return
 			}
 
-			key, parameters = l.basedOnIP.Parse(r)
-		}
+			httpStatus := l.core.Limiter(r.Context(), key, parameters)
 
-		httpStatus := l.core.Limiter(r.Context(), key, parameters)
-
-		if httpStatus == http.StatusTooManyRequests {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusTooManyRequests)
-			w.Write([]byte(`{"message" : "` + message409 + `"}`))
-			return
-		} else if httpStatus != http.StatusOK {
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(int(httpStatus))
-			return
+			if httpStatus == http.StatusTooManyRequests {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"message" : "` + message409 + `"}`))
+				return
+			} else if httpStatus != http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(int(httpStatus))
+				return
+			}
 		}
 
 		next.ServeHTTP(w, r)

@@ -20,26 +20,26 @@ func NewBasedOnToken(jwtauth *jwtauth.JWTAuth, defaultMaxRequests, defaultBlocke
 	}
 }
 
-func (l *BasedOnToken) Validate(r *http.Request) error {
-
-	tokenString := r.Header.Get("API_KEY")
+func (l *BasedOnToken) validate(tokenString string) error {
 
 	if tokenString == "" {
 		return errors.New("authorization token not found")
 	}
 
-	_, e := jwtauth.VerifyToken(l.jwtauth, tokenString)
-
-	if e != nil {
+	if _, e := jwtauth.VerifyToken(l.jwtauth, tokenString); e != nil {
 		return errors.New("invalid authorization header")
 	}
 
 	return nil
 }
 
-func (l *BasedOnToken) Parse(r *http.Request) (Key, *Parameters) {
+func (l *BasedOnToken) Parse(r *http.Request) (Key, *Parameters, error) {
 
 	tokenString := r.Header.Get("API_KEY")
+
+	if e := l.validate(tokenString); e != nil {
+		return "", nil, e
+	}
 
 	token, _ := l.jwtauth.Decode(tokenString)
 
@@ -51,7 +51,7 @@ func (l *BasedOnToken) Parse(r *http.Request) (Key, *Parameters) {
 	return key, &Parameters{
 		MaxRequests:    maxRequests,
 		BlockedSeconds: blockedSeconds,
-	}
+	}, nil
 }
 
 func (l *BasedOnToken) extractKey(token jwt.Token) Key {

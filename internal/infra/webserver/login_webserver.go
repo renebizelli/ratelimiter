@@ -2,7 +2,6 @@ package webserver
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 
@@ -50,8 +49,6 @@ func (l *LoginWebServer) loginHandler(w http.ResponseWriter, r *http.Request) {
 		"rl-seconds-blocked": input.BlockedSeconds,
 		"exp":                time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
 	}
-
-	log.Println(claims)
 
 	_, stringToken, jwterr := l.JWT.Encode(claims)
 
