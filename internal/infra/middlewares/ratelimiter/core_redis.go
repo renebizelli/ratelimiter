@@ -17,7 +17,7 @@ func NewCoreRedis(db *redis.Client) *CoreRedis {
 	return &CoreRedis{db: db}
 }
 
-func (l *CoreRedis) Limiter(ctx context.Context, key Key, parameters *Parameters) HttpStatus {
+func (l *CoreRedis) Limiter(ctx context.Context, key Key, parameters *Parameters) int {
 
 	counterKey := fmt.Sprintf("%s:%d", key, time.Now().Second())
 	blockedKey := fmt.Sprintf("%s:blocked", key)

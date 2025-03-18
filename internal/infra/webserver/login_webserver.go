@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/jwtauth"
+	pkg_utils "github.com/renebizelli/ratelimiter/pkg/utils"
 )
 
 type LoginInput struct {
@@ -16,16 +16,16 @@ type LoginInput struct {
 
 type LoginWebServer struct {
 	mux        *http.ServeMux
-	JWT        *jwtauth.JWTAuth
-	JWTExpires int
+	jwt        *pkg_utils.Jwt
+	jwtExpires int
 }
 
-func NewLoginWebServer(mux *http.ServeMux, jwt *jwtauth.JWTAuth, expiresIn int) *LoginWebServer {
+func NewLoginWebServer(mux *http.ServeMux, jwt *pkg_utils.Jwt, expiresIn int) *LoginWebServer {
 
 	return &LoginWebServer{
 		mux:        mux,
-		JWT:        jwt,
-		JWTExpires: expiresIn,
+		jwt:        jwt,
+		jwtExpires: expiresIn,
 	}
 }
 
@@ -44,13 +44,13 @@ func (l *LoginWebServer) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims := map[string]interface{}{
-		"user":               input.Email,
+		"key":                input.Email,
 		"rl-max-requests":    input.MaxRequests,
 		"rl-seconds-blocked": input.BlockedSeconds,
-		"exp":                time.Now().Add(time.Minute * time.Duration(l.JWTExpires)).Unix(),
+		"exp":                time.Now().Add(time.Minute * time.Duration(l.jwtExpires)).Unix(),
 	}
 
-	_, stringToken, jwterr := l.JWT.Encode(claims)
+	stringToken, jwterr := l.jwt.Generate(claims)
 
 	if jwterr != nil {
 		w.WriteHeader(http.StatusInternalServerError)

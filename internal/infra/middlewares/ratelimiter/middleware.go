@@ -5,27 +5,15 @@ import (
 )
 
 type RateLimiterMiddleware struct {
-	basedOnToken *BasedOnToken
-	basedOnIP    *BasedOnIP
-	core         CoreInterface
-	ipOn         bool
-	tokenOn      bool
+	basedOns []BasedonInterface
 }
 
 func NewRateLimiterMiddleware(
-	ipOn bool,
-	tokenOn bool,
-	basedOnToken *BasedOnToken,
-	basedOnIP *BasedOnIP,
-	core CoreInterface,
+	basedOns []BasedonInterface,
 ) *RateLimiterMiddleware {
 
 	return &RateLimiterMiddleware{
-		ipOn:         ipOn,
-		tokenOn:      tokenOn,
-		basedOnToken: basedOnToken,
-		basedOnIP:    basedOnIP,
-		core:         core,
+		basedOns: basedOns,
 	}
 }
 
@@ -34,36 +22,24 @@ var message409 = "you have reached the maximum number of requests or actions all
 func (l *RateLimiterMiddleware) Limiter(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
-		if l.tokenOn || l.ipOn {
+		for _, basedOn := range l.basedOns {
 
-			var key Key
-			var parameters *Parameters
-			var e error
-
-			if l.tokenOn {
-				key, parameters, e = l.basedOnToken.Parse(r)
-			} else if l.ipOn {
-				key, parameters, e = l.basedOnIP.Parse(r)
-			}
+			e := basedOn.Limiter(r)
 
 			if e != nil {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte(`{"message" : "` + e.Error() + `"}`))
-				return
-			}
 
-			httpStatus := l.core.Limiter(r.Context(), key, parameters)
+				if e.HttpStatus == http.StatusTooManyRequests {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusTooManyRequests)
+					w.Write([]byte(`{"message" : "` + message409 + `"}`))
+					return
+				} else if e.HttpStatus != http.StatusOK {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(e.HttpStatus)
+					w.Write([]byte(`{"message" : "` + e.Error() + `"}`))
+					return
+				}
 
-			if httpStatus == http.StatusTooManyRequests {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"message" : "` + message409 + `"}`))
-				return
-			} else if httpStatus != http.StatusOK {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(int(httpStatus))
-				return
 			}
 		}
 

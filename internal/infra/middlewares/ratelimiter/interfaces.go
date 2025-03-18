@@ -1,7 +1,14 @@
 package middlewares_ratelimiter
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 type CoreInterface interface {
-	Limiter(ctx context.Context, key Key, parameters *Parameters) HttpStatus
+	Limiter(ctx context.Context, key Key, parameters *Parameters) int
+}
+
+type BasedonInterface interface {
+	Limiter(r *http.Request) *Response
 }

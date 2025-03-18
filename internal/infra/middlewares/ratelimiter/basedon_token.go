@@ -1,69 +1,77 @@
 package middlewares_ratelimiter
 
 import (
-	"errors"
 	"net/http"
 
-	"github.com/go-chi/jwtauth"
-	"github.com/lestrrat-go/jwx/jwt"
+	pkg_utils "github.com/renebizelli/ratelimiter/pkg/utils"
 )
 
 type BasedOnToken struct {
-	jwtauth  *jwtauth.JWTAuth
-	_default *Parameters
+	core           CoreInterface
+	jwt            *pkg_utils.Jwt
+	headerByStuffs *HeaderByStuffs
+	on             bool
+	_default       *Parameters
 }
 
-func NewBasedOnToken(jwtauth *jwtauth.JWTAuth, defaultMaxRequests, defaultBlockedSeconds int) *BasedOnToken {
+func NewBasedOnToken(core CoreInterface, jwt *pkg_utils.Jwt, headerByStuffs *HeaderByStuffs, on bool, defaultMaxRequests, defaultBlockedSeconds int) *BasedOnToken {
 	return &BasedOnToken{
-		jwtauth:  jwtauth,
-		_default: &Parameters{MaxRequests: defaultMaxRequests, BlockedSeconds: defaultBlockedSeconds},
+		core:           core,
+		jwt:            jwt,
+		headerByStuffs: headerByStuffs,
+		on:             on,
+		_default:       &Parameters{MaxRequests: defaultMaxRequests, BlockedSeconds: defaultBlockedSeconds},
 	}
 }
 
-func (l *BasedOnToken) validate(tokenString string) error {
+func (l *BasedOnToken) validate(tokenString string) Response {
 
-	if tokenString == "" {
-		return errors.New("authorization token not found")
+	if e := l.jwt.VerifyToken(tokenString); e != nil {
+		return Response{Message: "invalid authorization header", HttpStatus: http.StatusBadRequest}
 	}
 
-	if _, e := jwtauth.VerifyToken(l.jwtauth, tokenString); e != nil {
-		return errors.New("invalid authorization header")
-	}
-
-	return nil
+	return Response{HttpStatus: 200}
 }
 
-func (l *BasedOnToken) Parse(r *http.Request) (Key, *Parameters, error) {
+func (l *BasedOnToken) Limiter(r *http.Request, ch chan<- Response) {
 
-	tokenString := r.Header.Get("API_KEY")
-
-	if e := l.validate(tokenString); e != nil {
-		return "", nil, e
+	if !l.on {
+		ch <- Response{HttpStatus: 200}
+		return
 	}
 
-	token, _ := l.jwtauth.Decode(tokenString)
+	var tokenString string
 
-	key := l.extractKey(token)
+	if t, e := l.headerByStuffs.GetAPIKey(r); e != nil {
+		ch <- Response{HttpStatus: 200}
+		return
+	} else {
+		tokenString = t
+	}
 
-	maxRequests := l.extractIntValue(token, "rl-max-requests", l._default.MaxRequests)
-	blockedSeconds := l.extractIntValue(token, "rl-seconds-blocked", l._default.BlockedSeconds)
+	if e := l.validate(tokenString); !e.Ok() {
+		ch <- e
+		return
+	}
 
-	return key, &Parameters{
+	token := l.jwt.Decode(tokenString)
+
+	key := Key(l.jwt.ExtractStringValue(token, "key"))
+
+	maxRequests := l.jwt.ExtractIntValue(token, "rl-max-requests", l._default.MaxRequests)
+	blockedSeconds := l.jwt.ExtractIntValue(token, "rl-seconds-blocked", l._default.BlockedSeconds)
+
+	parameters := &Parameters{
 		MaxRequests:    maxRequests,
 		BlockedSeconds: blockedSeconds,
-	}, nil
-}
-
-func (l *BasedOnToken) extractKey(token jwt.Token) Key {
-	user, _ := token.Get("user")
-	key := Key(user.(string))
-	return key
-}
-
-func (l *BasedOnToken) extractIntValue(token jwt.Token, claimName string, defaultValue int) int {
-	value := defaultValue
-	if v, e := token.Get(claimName); e {
-		value = int(v.(float64))
 	}
-	return value
+
+	if status := l.core.Limiter(r.Context(), key, parameters); status != http.StatusOK {
+		ch <- Response{HttpStatus: status}
+		return
+	}
+
+	l.headerByStuffs.Set(r)
+
+	ch <- Response{HttpStatus: 200}
 }

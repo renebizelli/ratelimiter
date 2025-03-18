@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-chi/jwtauth"
 	"github.com/renebizelli/ratelimiter/configs"
 	middlewares_ratelimiter "github.com/renebizelli/ratelimiter/internal/infra/middlewares/ratelimiter"
 	"github.com/renebizelli/ratelimiter/internal/infra/webserver"
+	pkg_utils "github.com/renebizelli/ratelimiter/pkg/utils"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -60,30 +60,34 @@ func createRedis(ctx context.Context) *redis.Client {
 	return rdb
 }
 
-func createJWTAuth(cfgs *configs.Config) *jwtauth.JWTAuth {
-	return jwtauth.New("HS256", []byte(cfgs.JWTSecret), nil)
+func createJWTAuth(cfgs *configs.Config) *pkg_utils.Jwt {
+	return pkg_utils.NewJwt(cfgs.JWTSecret, cfgs.JWTExpires)
 }
 
-func createRateLimiterMiddleware(jwt *jwtauth.JWTAuth, cfgs *configs.Config, rdb *redis.Client) *middlewares_ratelimiter.RateLimiterMiddleware {
+func createRateLimiterMiddleware(jwt *pkg_utils.Jwt, cfgs *configs.Config, rdb *redis.Client) *middlewares_ratelimiter.RateLimiterMiddleware {
+
+	core := middlewares_ratelimiter.NewCoreRedis(rdb)
 
 	basedOnToken := middlewares_ratelimiter.NewBasedOnToken(
+		core,
 		jwt,
+		&middlewares_ratelimiter.HeaderByStuffs{},
+		cfgs.RATELIMITER_TOKEN_ON,
 		cfgs.RATELIMITER_TOKEN_DEFAULT_MAX_REQUESTS,
 		cfgs.RATELIMITER_TOKEN_DEFAULT_BLOCKED_SECONDS)
 
 	basedOnIP := middlewares_ratelimiter.NewBasedOnIP(
+		core,
+		&middlewares_ratelimiter.HeaderByStuffs{},
+		cfgs.RATELIMITER_IP_ON,
 		cfgs.RATELIMITER_IP_MAX_REQUESTS,
 		cfgs.RATELIMITER_IP_BLOCKED_SECONDS)
 
-	core := middlewares_ratelimiter.NewCoreRedis(rdb)
-
 	ratelimiter := middlewares_ratelimiter.NewRateLimiterMiddleware(
-		cfgs.RATELIMITER_IP_ON,
-		cfgs.RATELIMITER_TOKEN_ON,
-		basedOnToken,
-		basedOnIP,
-		core,
-	)
+		[]middlewares_ratelimiter.BasedonInterface{
+			basedOnToken,
+			basedOnIP,
+		})
 
 	return ratelimiter
 
