@@ -51,6 +51,7 @@ func (l *Jwt) ExtractStringValue(token jwt.Token, key string) string {
 }
 
 func (l *Jwt) ExtractIntValue(token jwt.Token, claimName string, defaultValue int) int {
+
 	value := defaultValue
 	if v, e := token.Get(claimName); e {
 		value = int(v.(float64))

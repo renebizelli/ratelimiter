@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -17,9 +19,12 @@ func NewCoreRedis(db *redis.Client) *CoreRedis {
 	return &CoreRedis{db: db}
 }
 
+var count int32
+
 func (l *CoreRedis) Limiter(ctx context.Context, key Key, parameters *Parameters) int {
 
-	counterKey := fmt.Sprintf("%s:%d", key, time.Now().Second())
+	//counterKey := fmt.Sprintf("%s:%d", key, time.Now().Second())
+	counterKey := string(key)
 	blockedKey := fmt.Sprintf("%s:blocked", key)
 
 	blocked := l.db.Exists(ctx, blockedKey).Val()
@@ -28,11 +33,15 @@ func (l *CoreRedis) Limiter(ctx context.Context, key Key, parameters *Parameters
 		return http.StatusTooManyRequests
 	}
 
-	count, _ := l.db.Get(ctx, counterKey).Int()
+	countInt, _ := l.db.Get(ctx, counterKey).Int()
 
-	count++
+	count = int32(countInt)
 
-	if count > parameters.MaxRequests {
+	fmt.Fprintln(os.Stdout, counterKey, count, time.Now())
+
+	atomic.AddInt32(&count, 1)
+
+	if count > int32(parameters.MaxRequests) {
 		l.db.Set(ctx, blockedKey, nil, time.Duration(parameters.BlockedSeconds)*time.Second)
 		return http.StatusTooManyRequests
 	}
