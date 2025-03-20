@@ -58,25 +58,27 @@ func TestLimiter(t *testing.T) {
 
 	pong := rdb.Ping(ctx)
 
-	assert.Equal(t, "PONG", pong.Val())
+	if pong.Val() != "PONG" {
+		panic(pong.Err())
+	}
 
 	core := NewCoreRedis(rdb)
 
 	basedOnToken := NewBasedOnToken(core, jwt, &HeaderByStuffs{}, true, 3, 5)
 
 	scenarious := []Scenario{
-
-		ScenarioGenerate("rene", 3, true),
-		ScenarioGenerate("rene_1", 5, true),
-		ScenarioGenerate("rene_2", 5, false),
-		ScenarioGenerate("rene_3", 50, true),
+		ScenarioGenerate("rene", 10, 0),
+		ScenarioGenerate("rene_1", 10, 0),
+		ScenarioGenerate("rene_2", 10, 0),
+		ScenarioGenerate("rene_3", 10, 0),
+		ScenarioGenerate("rene_4", 10, 0),
 	}
 
 	for _, scenario := range scenarious {
 
 		claims := map[string]interface{}{
 			"key":                scenario.Email,
-			"rl-max-requests":    scenario.MaxAllowedRequests,
+			"rl-max-requests":    scenario.AllowedRequest,
 			"rl-seconds-blocked": 5,
 			"exp":                time.Now().Add(time.Minute * time.Duration(60)).Unix(),
 		}
@@ -89,51 +91,133 @@ func TestLimiter(t *testing.T) {
 
 		basedOnToken.headerByStuffs.SetAPIKey(request, tokenString)
 
-		cha := make(chan Response, len(scenario.Params))
+		cha := make(chan Response, 1000)
 
-		for _, p := range scenario.Params {
-			time.Sleep(time.Duration(p.TimeSpleep) * time.Millisecond)
+		ctx, _ := context.WithTimeout(context.Background(), time.Second)
+
+		ticker := time.NewTicker(time.Duration(100) * time.Millisecond)
+
+		defer ticker.Stop()
+
+		counter := 0
+
+		c := true
+
+		for c {
+
 			go basedOnToken.Limiter(request, cha)
-		}
+			counter++
 
-		for i := 0; i < len(scenario.Params); i++ {
-			x := <-cha
-			log.Println(i, scenario.Params[i].StatusCode, x.HttpStatus)
-			assert.Equal(t, scenario.Params[i].StatusCode, x.HttpStatus)
+			select {
+			case <-ticker.C:
+			case <-ctx.Done():
+				counterOk := 0
+				counter429 := 0
+				for i := 0; i < counter; i++ {
+					x := <-cha
+
+					if x.HttpStatus == http.StatusOK {
+						counterOk += 1
+					} else {
+						counter429 += 1
+					}
+
+				}
+				log.Println(counterOk, counter429)
+				assert.Equal(t, scenario.AllowedRequest, counterOk)
+				assert.Greater(t, counter429, 0)
+				c = false
+			}
+
 		}
 
 	}
 }
 
-func ScenarioGenerate(email string, quantity200 int, isLast429 bool) Scenario {
-	s := Scenario{Email: email}
-	s.AddParams(quantity200, isLast429)
+func TestLimiterBlocked(t *testing.T) {
+
+	ctx := context.Background()
+
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+
+	pong := rdb.Ping(ctx)
+
+	if pong.Val() != "PONG" {
+		panic(pong.Err())
+	}
+
+	core := NewCoreRedis(rdb)
+
+	basedOnToken := NewBasedOnToken(core, jwt, &HeaderByStuffs{}, true, 3, 5)
+
+	scenarious := []Scenario{
+		ScenarioGenerate("rene", 1, 5),
+		ScenarioGenerate("rene_1", 1, 15),
+	}
+
+	for _, scenario := range scenarious {
+
+		claims := map[string]interface{}{
+			"key":                scenario.Email,
+			"rl-max-requests":    scenario.AllowedRequest,
+			"rl-seconds-blocked": scenario.BlockedSeconds,
+			"exp":                time.Now().Add(time.Minute * time.Duration(60)).Unix(),
+		}
+
+		tokenString, _ := jwt.Generate(claims)
+
+		request := &http.Request{
+			Header: http.Header{},
+		}
+
+		basedOnToken.headerByStuffs.SetAPIKey(request, tokenString)
+
+		cha := make(chan Response)
+
+		go basedOnToken.Limiter(request, cha)
+		time.Sleep(time.Duration(100) * time.Millisecond)
+		go basedOnToken.Limiter(request, cha)
+
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(scenario.BlockedSeconds)*time.Second)
+
+		ticker := time.NewTicker(time.Duration(100) * time.Millisecond)
+		defer ticker.Stop()
+
+		loop := true
+
+		counter := 0
+
+		for loop {
+
+			select {
+			case <-ticker.C:
+				go basedOnToken.Limiter(request, cha)
+
+				c := <-cha
+
+				if http.StatusTooManyRequests == c.HttpStatus {
+					counter++
+				}
+
+			case <-ctx.Done():
+				loop = false
+			}
+		}
+		assert.Greater(t, counter, 0)
+	}
+}
+
+func ScenarioGenerate(email string, allowedRequest int, blockedSeconds int) Scenario {
+	s := Scenario{Email: email, AllowedRequest: allowedRequest, BlockedSeconds: blockedSeconds}
 	return s
 }
 
 type Scenario struct {
-	Email              string
-	Params             []TestParam
-	MaxAllowedRequests int
-}
-
-func (s *Scenario) AddParams(quantity200 int, isLast429 bool) {
-
-	millisecond := 1000 / quantity200
-
-	s.MaxAllowedRequests = quantity200
-
-	for i := 0; i < quantity200; i++ {
-		s.Params = append(s.Params, TestParam{StatusCode: http.StatusOK, TimeSpleep: millisecond})
-	}
-
-	if isLast429 {
-		s.Params[len(s.Params)-1].StatusCode = http.StatusTooManyRequests
-		s.MaxAllowedRequests = quantity200 - 1
-	}
-}
-
-type TestParam struct {
-	TimeSpleep int
-	StatusCode int
+	Email          string
+	AllowedRequest int
+	BlockedSeconds int
 }
