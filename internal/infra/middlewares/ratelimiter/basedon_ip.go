@@ -24,29 +24,32 @@ func NewBasedOnIP(core CoreInterface, headerByStuffs *HeaderByStuffs, on bool, m
 	}
 }
 
-func (l *BasedOnIP) validate() *Response {
+func (l *BasedOnIP) validate() Response {
 
 	if l.parameters.MaxRequests == 0 {
-		return &Response{Message: "RATELIMITER_IP_MAX_REQUESTS is required", HttpStatus: http.StatusBadRequest}
+		return Response{Message: "RATELIMITER_IP_MAX_REQUESTS is required", HttpStatus: http.StatusBadRequest}
 	} else if l.parameters.BlockedSeconds == 0 {
-		return &Response{Message: "RATELIMITER_IP_BLOCKED_SECONDS is required", HttpStatus: http.StatusBadRequest}
+		return Response{Message: "RATELIMITER_IP_BLOCKED_SECONDS is required", HttpStatus: http.StatusBadRequest}
 	}
 
-	return nil
+	return Response{HttpStatus: 200}
 }
 
-func (l *BasedOnIP) Limiter(r *http.Request) *Response {
+func (l *BasedOnIP) Limiter(r *http.Request, ch chan<- Response) {
 
 	if !l.on {
-		return nil
+		ch <- Response{HttpStatus: 200}
+		return
 	}
 
 	if l.headerByStuffs.IsByPass(r) {
-		return nil
+		ch <- Response{HttpStatus: 200}
+		return
 	}
 
-	if e := l.validate(); e != nil {
-		return e
+	if e := l.validate(); !e.Ok() {
+		ch <- e
+		return
 	}
 
 	ip := strings.Split(r.RemoteAddr, ":")[0]
@@ -58,8 +61,9 @@ func (l *BasedOnIP) Limiter(r *http.Request) *Response {
 	}
 
 	if status := l.core.Limiter(r.Context(), key, parameters); status != http.StatusOK {
-		return &Response{HttpStatus: status}
+		ch <- Response{HttpStatus: status}
+		return
 	}
 
-	return nil
+	ch <- Response{HttpStatus: 200}
 }
