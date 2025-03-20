@@ -24,22 +24,22 @@ func (l *RateLimiterMiddleware) Limiter(next http.Handler) http.Handler {
 
 		for _, basedOn := range l.basedOns {
 
-			e := basedOn.Limiter(r)
+			ch := make(chan Response)
 
-			if e != nil {
+			go basedOn.Limiter(r, ch)
 
-				if e.HttpStatus == http.StatusTooManyRequests {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusTooManyRequests)
-					w.Write([]byte(`{"message" : "` + message409 + `"}`))
-					return
-				} else if e.HttpStatus != http.StatusOK {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(e.HttpStatus)
-					w.Write([]byte(`{"message" : "` + e.Error() + `"}`))
-					return
-				}
+			e := <-ch
 
+			if e.HttpStatus == http.StatusTooManyRequests {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"message" : "` + message409 + `"}`))
+				return
+			} else if e.HttpStatus != http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(e.HttpStatus)
+				w.Write([]byte(`{"message" : "` + e.Error() + `"}`))
+				return
 			}
 		}
 

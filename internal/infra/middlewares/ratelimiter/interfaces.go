@@ -10,5 +10,5 @@ type CoreInterface interface {
 }
 
 type BasedonInterface interface {
-	Limiter(r *http.Request) *Response
+	Limiter(r *http.Request, ch chan<- Response)
 }

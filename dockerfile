@@ -7,9 +7,9 @@ RUN GOOS=linux CGO_ENABLED=0 go build -ldflags="-w -s" -o server ./cmd/main.go
 
 FROM scratch
 
-COPY --from=builder /cmd .
-COPY --from=builder /.env .
+COPY --from=builder /app/cmd .
+COPY --from=builder /app/.env .
 
 EXPOSE 8080 6379
 
-CMD ["./server"]
+CMD ["./main.exe"]
