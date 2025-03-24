@@ -1,9 +1,0 @@
-webserver           ok
-.env                ok
-middleware basic    ok
-gerar token         ok
-ler token           ok
-redis Docker
-
-panic recover
-greceful shutdown
