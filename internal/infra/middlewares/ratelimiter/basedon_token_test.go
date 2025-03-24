@@ -10,12 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	pkg_utils "github.com/renebizelli/ratelimiter/pkg/utils"
 	"github.com/stretchr/testify/assert"
-	_ "github.com/stretchr/testify/assert"
 )
 
 var jwt = pkg_utils.NewJwt("SECRET", 500)
 
-func TestLimiterOff(t *testing.T) {
+func TestLimiterTokenOff(t *testing.T) {
 
 	b := &BasedOnToken{
 		on: false,
@@ -23,7 +22,7 @@ func TestLimiterOff(t *testing.T) {
 
 	ch := make(chan Response)
 
-	b.Limiter(&http.Request{}, ch)
+	go b.Limiter(&http.Request{}, ch)
 
 	e := <-ch
 
@@ -46,7 +45,7 @@ func TestLimiterOnWithNoAPIKey(t *testing.T) {
 	assert.Equal(t, e.HttpStatus, http.StatusOK)
 }
 
-func TestLimiter(t *testing.T) {
+func TestLimiterToken(t *testing.T) {
 
 	ctx := context.Background()
 
@@ -62,16 +61,16 @@ func TestLimiter(t *testing.T) {
 		panic(pong.Err())
 	}
 
-	core := NewCoreRedis(rdb)
+	core := NewCoreRedis(ctx, rdb)
 
 	basedOnToken := NewBasedOnToken(core, jwt, &HeaderByStuffs{}, true, 3, 5)
 
 	scenarious := []Scenario{
-		ScenarioGenerate("rene", 10, 0),
-		ScenarioGenerate("rene_1", 10, 0),
-		ScenarioGenerate("rene_2", 10, 0),
-		ScenarioGenerate("rene_3", 10, 0),
-		ScenarioGenerate("rene_4", 10, 0),
+		ScenarioGenerateToken("rene", 10, 0),
+		ScenarioGenerateToken("rene_1", 10, 0),
+		ScenarioGenerateToken("rene_2", 10, 0),
+		ScenarioGenerateToken("rene_3", 10, 0),
+		ScenarioGenerateToken("rene_4", 10, 0),
 	}
 
 	for _, scenario := range scenarious {
@@ -134,7 +133,7 @@ func TestLimiter(t *testing.T) {
 	}
 }
 
-func TestLimiterBlocked(t *testing.T) {
+func TestLimiterBlockedToken(t *testing.T) {
 
 	ctx := context.Background()
 
@@ -150,13 +149,14 @@ func TestLimiterBlocked(t *testing.T) {
 		panic(pong.Err())
 	}
 
-	core := NewCoreRedis(rdb)
+	core := NewCoreRedis(ctx, rdb)
 
 	basedOnToken := NewBasedOnToken(core, jwt, &HeaderByStuffs{}, true, 3, 5)
 
 	scenarious := []Scenario{
-		ScenarioGenerate("rene", 1, 5),
-		ScenarioGenerate("rene_1", 1, 15),
+		ScenarioGenerateToken("rene", 1, 5),
+		ScenarioGenerateToken("rene_1", 1, 15),
+		ScenarioGenerateToken("rene_2", 1, 10),
 	}
 
 	for _, scenario := range scenarious {
@@ -179,39 +179,18 @@ func TestLimiterBlocked(t *testing.T) {
 		cha := make(chan Response)
 
 		go basedOnToken.Limiter(request, cha)
+		<-cha
 		time.Sleep(time.Duration(100) * time.Millisecond)
 		go basedOnToken.Limiter(request, cha)
 
-		ctx, _ := context.WithTimeout(context.Background(), time.Duration(scenario.BlockedSeconds)*time.Second)
+		c := <-cha
 
-		ticker := time.NewTicker(time.Duration(100) * time.Millisecond)
-		defer ticker.Stop()
+		assert.Equal(t, 429, c.HttpStatus)
 
-		loop := true
-
-		counter := 0
-
-		for loop {
-
-			select {
-			case <-ticker.C:
-				go basedOnToken.Limiter(request, cha)
-
-				c := <-cha
-
-				if http.StatusTooManyRequests == c.HttpStatus {
-					counter++
-				}
-
-			case <-ctx.Done():
-				loop = false
-			}
-		}
-		assert.Greater(t, counter, 0)
 	}
 }
 
-func ScenarioGenerate(email string, allowedRequest int, blockedSeconds int) Scenario {
+func ScenarioGenerateToken(email string, allowedRequest int, blockedSeconds int) Scenario {
 	s := Scenario{Email: email, AllowedRequest: allowedRequest, BlockedSeconds: blockedSeconds}
 	return s
 }

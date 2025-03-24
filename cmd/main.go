@@ -19,13 +19,13 @@ func main() {
 
 	rdb := createRedis(ctx)
 
-	cfgs := configs.LoadConfig("./")
+	cfgs := configs.LoadConfig("../")
 
 	jwt := createJWTAuth(cfgs)
 
 	mux := http.NewServeMux()
 
-	ratelimiter := createRateLimiterMiddleware(jwt, cfgs, rdb)
+	ratelimiter := createRateLimiterMiddleware(ctx, jwt, cfgs, rdb)
 	songWebServer := webserver.NewSongWebServer(mux, ratelimiter)
 	loginWebserver := webserver.NewLoginWebServer(mux, jwt, cfgs.JWTExpires)
 
@@ -45,15 +45,14 @@ func registerRoutes(webservers ...webserver.RegisterRoutesInterface) {
 func createRedis(ctx context.Context) *redis.Client {
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "localhost:6379",
-		Password: "",
+		Addr:     "redis:6379",
+		Password: "goexpert",
 		DB:       0,
 	})
 
 	pong := rdb.Ping(ctx)
 	if pong.Val() != "PONG" {
-		fmt.Println("Error connecting to redis")
-		return nil
+		panic(fmt.Sprintf("%s : %s", "Error connecting to redis", pong.Err()))
 	}
 
 	fmt.Println("Redis connected")
@@ -64,9 +63,9 @@ func createJWTAuth(cfgs *configs.Config) *pkg_utils.Jwt {
 	return pkg_utils.NewJwt(cfgs.JWTSecret, cfgs.JWTExpires)
 }
 
-func createRateLimiterMiddleware(jwt *pkg_utils.Jwt, cfgs *configs.Config, rdb *redis.Client) *middlewares_ratelimiter.RateLimiterMiddleware {
+func createRateLimiterMiddleware(ctx context.Context, jwt *pkg_utils.Jwt, cfgs *configs.Config, rdb *redis.Client) *middlewares_ratelimiter.RateLimiterMiddleware {
 
-	core := middlewares_ratelimiter.NewCoreRedis(rdb)
+	core := middlewares_ratelimiter.NewCoreRedis(ctx, rdb)
 
 	basedOnToken := middlewares_ratelimiter.NewBasedOnToken(
 		core,

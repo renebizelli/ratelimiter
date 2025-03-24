@@ -10,34 +10,37 @@ import (
 )
 
 type CoreRedis struct {
-	db *redis.Client
+	db  *redis.Client
+	ctx context.Context
 }
 
-func NewCoreRedis(db *redis.Client) *CoreRedis {
-	return &CoreRedis{db: db}
+func NewCoreRedis(ctx context.Context, db *redis.Client) *CoreRedis {
+	return &CoreRedis{ctx: ctx, db: db}
 }
 
-func (l *CoreRedis) Limiter(ctx context.Context, key Key, parameters *Parameters) int {
+func (l *CoreRedis) IsBlocked(blockedKey string) bool {
+	return l.db.Exists(l.ctx, blockedKey).Val() > 0
+}
 
-	counterKey := string(key)
+func (l *CoreRedis) Limiter(key Key, parameters *Parameters) int {
+
 	blockedKey := fmt.Sprintf("%s:blocked", key)
 
-	blocked := l.db.Exists(ctx, blockedKey).Val()
-
-	if blocked == 1 {
+	if l.IsBlocked(blockedKey) {
 		return http.StatusTooManyRequests
 	}
 
-	count, _ := l.db.Get(ctx, counterKey).Int()
+	counterKey := string(key)
+	count, _ := l.db.Get(l.ctx, counterKey).Int()
 
 	count++
 
 	if count > parameters.MaxRequests {
-		l.db.Set(ctx, blockedKey, nil, time.Duration(parameters.BlockedSeconds)*time.Second)
+		l.db.Set(l.ctx, blockedKey, nil, time.Duration(parameters.BlockedSeconds)*time.Second)
 		return http.StatusTooManyRequests
 	}
 
-	l.db.Set(ctx, counterKey, count, time.Second)
+	l.db.Set(l.ctx, counterKey, count, time.Second)
 
 	return http.StatusOK
 }

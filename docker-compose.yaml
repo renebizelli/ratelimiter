@@ -14,8 +14,16 @@ services:
       - ratelimiter
   redis:      
     image: redis
+    command: redis-server --save 20 1 --loglevel warning --requirepass goexpert
     ports:
       - "6379:6379"
+    volumes: 
+      - redisdata:/data
+    networks:
+      - ratelimiter   
     
 networks:
   ratelimiter:
+
+volumes:
+  redisdata:

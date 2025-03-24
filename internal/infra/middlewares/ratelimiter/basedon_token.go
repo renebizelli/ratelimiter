@@ -66,7 +66,7 @@ func (l *BasedOnToken) Limiter(r *http.Request, ch chan<- Response) {
 		BlockedSeconds: blockedSeconds,
 	}
 
-	if status := l.core.Limiter(r.Context(), key, parameters); status != http.StatusOK {
+	if status := l.core.Limiter(key, parameters); status != http.StatusOK {
 		ch <- Response{HttpStatus: status}
 		return
 	}

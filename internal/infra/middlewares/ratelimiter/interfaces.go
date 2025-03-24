@@ -1,12 +1,12 @@
 package middlewares_ratelimiter
 
 import (
-	"context"
 	"net/http"
 )
 
 type CoreInterface interface {
-	Limiter(ctx context.Context, key Key, parameters *Parameters) int
+	Limiter(key Key, parameters *Parameters) int
+	IsBlocked(blockedKey string) bool
 }
 
 type BasedonInterface interface {
